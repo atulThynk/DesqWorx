@@ -10,6 +10,7 @@ import Profile from '../pages/superAdmin/Profile';
 import AdminDashboard from '../pages/admin/Dashboard';
 import DashboardLayout from '../components/layouts/DashboardLayout';
 import { useAuth } from '../contexts/AuthContext';
+import Visitors from '../pages/superAdmin/Visitors';
 
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode, allowedRoles: string[] }) => {
   const { user, isLoading } = useAuth();
@@ -76,6 +77,7 @@ function AppRoutes() {
         <Route path="companies/:id/employees" element={<CompanyEmployees />} />
         <Route path="attendance" element={<Attendance />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="visitors" element={<Visitors />} />
       </Route>
 
       {/* Admin Routes */}

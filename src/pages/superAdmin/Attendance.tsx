@@ -77,7 +77,71 @@ const Attendance: React.FC = () => {
 
   const markAttendance = async (employeeId: string, companyId: string, status: 'present' | 'absent') => {
     try {
+      // Check if there is an existing attendance record for this employee on this date
+      const { data: existingAttendance, error: fetchError } = await supabase
+        .from('attendance')
+        .select('status')
+        .eq('user_id', employeeId)
+        .eq('company_id', companyId)
+        .eq('date', today)
+        .single();
+  
+      if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 is "no rows returned" error
+        throw fetchError;
+      }
+  
+      // Get company information for credit operations
+      const { data: company, error: companyError } = await supabase
+        .from('companies')
+        .select('credits, seat_price')
+        .eq('id', companyId)
+        .single();
+  
+      if (companyError) throw companyError;
+  
+      // Case 1: Marking as present (new record or changing from absent)
+      if (status === 'present') {
+        if (company.credits < company.seat_price) {
+          toast.error('Company does not have enough credits');
+          return;
+        }
+  
+        // Deduct credits
+        const { error: creditError } = await supabase
+          .from('companies')
+          .update({ credits: company.credits - company.seat_price })
+          .eq('id', companyId);
+  
+        if (creditError) throw creditError;
+  
+        // Record credit usage
+        const { error: historyError } = await supabase
+          .from('credit_history')
+          .insert({
+            company_id: companyId,
+            amount: company.seat_price,
+            action: 'used',
+            description: `Attendance marked for ${today}`
+          });
+  
+        if (historyError) throw historyError;
+      }
+      // Case 2: Correcting from present to absent - refund credits without modifying credit_history
+      else if (existingAttendance && existingAttendance.status === 'present') {
+        // Add credits back to company without recording in credit_history
+        const { error: creditError } = await supabase
+          .from('companies')
+          .update({ credits: company.credits + company.seat_price })
+          .eq('id', companyId);
+  
+        if (creditError) throw creditError;
+  
+        // We don't add or remove any records from credit_history for this case
+      }
+  
+      // Use the attendance service to mark attendance
       await attendanceService.markAttendance(employeeId, companyId, status);
+      
       toast.success(`Attendance marked as ${status}`);
       loadEmployees();
     } catch (error) {

@@ -18,26 +18,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
+  const [authInitialized, setAuthInitialized] = useState(false);
 
-  // Updated user data fetcher with better error handling
   const fetchUserData = async (userId: string) => {
     try {
-      const { data: userData, error: userError } = await supabase
+      const { data: userData, error } = await supabase
         .from('users')
         .select('*')
         .eq('id', userId)
-        .maybeSingle(); // Use maybeSingle instead of single to handle no results gracefully
-      
-      if (userError) {
-        console.error('Error fetching user data:', userError);
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching user data:', error);
         return null;
       }
-      
       if (!userData) {
         console.warn('No user data found for ID:', userId);
         return null;
       }
-      
+
       return {
         id: userData.id,
         fullName: userData.full_name,
@@ -48,99 +47,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         role: userData.role as UserRole,
       };
     } catch (error) {
-      console.error('Error in fetchUserData:', error);
+      console.error('Unexpected error fetching user data:', error);
       return null;
     }
   };
 
-  const handleAuthError = async () => {
-    setUser(null);
-    setIsLoading(false);
-    if (location.pathname !== '/login') {
-      navigate('/login', { replace: true });
-    }
-  };
-
-  useEffect(() => {
-    let mounted = true;
-
-    const initializeAuth = async () => {
-      try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError) {
-          throw sessionError;
-        }
-
-        if (session?.user && mounted) {
-          const userObj = await fetchUserData(session.user.id);
-          if (userObj && mounted) {
-            setUser(userObj);
-            
-            // Only redirect if we're on the login page or root
-            if (location.pathname === '/login' || location.pathname === '/') {
-              const redirectPath = `/${userObj.role.toLowerCase().replace('_', '-')}/dashboard`;
-              navigate(redirectPath, { replace: true });
-            }
-          } else {
-            await handleAuthError();
-          }
-        } else if (location.pathname !== '/login' && mounted) {
-          navigate('/login', { replace: true });
-        }
-      } catch (error) {
-        console.error('Auth initialization error:', error);
-        if (mounted) {
-          await handleAuthError();
-        }
-      } finally {
-        if (mounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    initializeAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
-
-      if (event === 'SIGNED_IN' && session?.user) {
-        try {
-          const userObj = await fetchUserData(session.user.id);
-          if (userObj && mounted) {
-            setUser(userObj);
-            const redirectPath = `/${userObj.role.toLowerCase().replace('_', '-')}/dashboard`;
-            navigate(redirectPath, { replace: true });
-          } else {
-            await handleAuthError();
-          }
-        } catch (error) {
-          console.error('Auth state change error:', error);
-          if (mounted) {
-            await handleAuthError();
-          }
-        }
-      } else if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' || event === 'USER_DELETED') {
-        if (mounted) {
-          setUser(null);
-          navigate('/login', { replace: true });
-        }
-      }
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, [navigate, location.pathname]);
-
   const login = async (email: string, password: string) => {
     try {
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      setIsLoading(true);
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
       if (signInError) throw signInError;
       if (!data?.user) throw new Error('No user returned from authentication');
@@ -153,18 +68,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch (error) {
       console.error('Login error:', error);
       return { error: error as Error };
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const logout = async () => {
     try {
+      setIsLoading(true);
       await supabase.auth.signOut();
-      setUser(null);
-      navigate('/login', { replace: true });
     } catch (error) {
       console.error('Logout error:', error);
-      // Even if there's an error during signOut, we should clear the local state
+    } finally {
       setUser(null);
+      setIsLoading(false);
       navigate('/login', { replace: true });
     }
   };
@@ -172,6 +89,90 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const getUserRole = (): UserRole | null => {
     return user ? user.role : null;
   };
+
+  // Handle initial session check
+  useEffect(() => {
+    const initializeAuth = async () => {
+      try {
+        setIsLoading(true);
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) throw error;
+
+        if (session?.user) {
+          const userObj = await fetchUserData(session.user.id);
+          if (userObj) {
+            setUser(userObj);
+          } else {
+            // User data not found, log out
+            await supabase.auth.signOut();
+            setUser(null);
+            if (location.pathname !== '/login') {
+              navigate('/login', { replace: true });
+            }
+          }
+        } else if (location.pathname !== '/login') {
+          navigate('/login', { replace: true });
+        }
+      } catch (error) {
+        console.error('Initialization error:', error);
+        if (location.pathname !== '/login') {
+          navigate('/login', { replace: true });
+        }
+      } finally {
+        setIsLoading(false);
+        setAuthInitialized(true);
+      }
+    };
+
+    initializeAuth();
+  }, [navigate, location.pathname]);
+
+  // Handle auth state changes separately
+  useEffect(() => {
+    if (!authInitialized) return;
+    
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth event:', event);
+
+      // Skip handling INITIAL_SESSION since we already processed it
+      if (event === 'INITIAL_SESSION') {
+        return;
+      }
+
+      // For SIGNED_IN event, don't reload the page if the user is already set
+      if (event === 'SIGNED_IN' && session?.user) {
+        if (user && user.id === session.user.id) {
+          // User is already set correctly, no need to reload data
+          return;
+        }
+        
+        try {
+          setIsLoading(true);
+          const userObj = await fetchUserData(session.user.id);
+          if (userObj) {
+            setUser(userObj);
+          } else {
+            // User data not found, log out
+            await supabase.auth.signOut();
+            setUser(null);
+            navigate('/login', { replace: true });
+          }
+        } catch (error) {
+          console.error('Error processing SIGNED_IN event:', error);
+        } finally {
+          setIsLoading(false);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        navigate('/login', { replace: true });
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [authInitialized, user, navigate]);
 
   return (
     <AuthContext.Provider value={{ user, isLoading, login, logout, getUserRole }}>

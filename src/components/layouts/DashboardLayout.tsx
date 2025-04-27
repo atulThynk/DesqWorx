@@ -27,6 +27,7 @@ const DashboardLayout: React.FC = () => {
     { path: '/super-admin/dashboard', icon: <LayoutGrid size={20} />, label: 'Dashboard' },
     { path: '/super-admin/companies', icon: <Building2 size={20} />, label: 'Companies' },
     { path: '/super-admin/attendance', icon: <Calendar size={20} />, label: 'Attendance' },
+    { path: '/super-admin/visitors', icon: <Settings size={20} />, label: 'Visitors' },
     { path: '/super-admin/profile', icon: <Settings size={20} />, label: 'Profile' },
   ];
   

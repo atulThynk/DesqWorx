@@ -11,6 +11,7 @@ import AdminDashboard from '../pages/admin/Dashboard';
 import DashboardLayout from '../components/layouts/DashboardLayout';
 import { useAuth } from '../contexts/AuthContext';
 import Visitors from '../pages/superAdmin/Visitors';
+import AdminCompanyEmployees from '../pages/admin/Employees';
 
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode, allowedRoles: string[] }) => {
   const { user, isLoading } = useAuth();
@@ -90,9 +91,9 @@ function AppRoutes() {
         }
       >
         <Route path="dashboard" element={<AdminDashboard />} />
-        <Route path="employees" element={<div>Employees Page</div>} />
-        <Route path="credits" element={<div>Credits Page</div>} />
-        <Route path="attendance" element={<div>Attendance Page</div>} />
+        <Route path="employees" element={<AdminCompanyEmployees/>} />
+        {/* <Route path="credits" element={<div>Credits Page</div>} />
+        <Route path="attendance" element={<div>Attendance Page</div>} /> */}
       </Route>
 
       {/* Employee Routes */}

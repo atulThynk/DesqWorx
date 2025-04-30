@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Plus, CreditCard, Users, Search } from 'lucide-react';
+import { Building2, Plus, CreditCard, Users, Search, Trash2, AlertTriangle } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { supabase } from '../../lib/supabase';
@@ -8,6 +8,7 @@ import Card from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
 import DataTable from '../../components/ui/DataTable';
 import Badge from '../../components/ui/Badge';
+import Modal from '../../components/ui/Modal';
 
 interface Company {
   id: string;
@@ -26,6 +27,9 @@ const Companies: React.FC = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [companyToDelete, setCompanyToDelete] = useState<Company | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -47,6 +51,94 @@ const Companies: React.FC = () => {
       console.error('Error loading companies:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDeleteClick = (company: Company) => {
+    setCompanyToDelete(company);
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!companyToDelete) return;
+    
+    try {
+      setIsDeleting(true);
+      
+      // Delete all related records in proper order to avoid foreign key constraint violations
+      
+      // 1. Delete attendance records for the company
+      const { error: attendanceError } = await supabase
+        .from('attendance')
+        .delete()
+        .eq('company_id', companyToDelete.id);
+      
+      if (attendanceError) throw attendanceError;
+      
+      // 2. Delete credit_transactions for the company
+      const { error: transactionsError } = await supabase
+        .from('credit_transactions')
+        .delete()
+        .eq('company_id', companyToDelete.id);
+      
+      if (transactionsError) throw transactionsError;
+      
+      // 3. Delete credit_history for the company
+      const { error: creditHistoryError } = await supabase
+        .from('credit_history')
+        .delete()
+        .eq('company_id', companyToDelete.id);
+      
+      if (creditHistoryError) throw creditHistoryError;
+      
+      // 4. Get employee IDs to delete user accounts
+      const { data: employeesData, error: employeesQueryError } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('company_id', companyToDelete.id);
+      
+      if (employeesQueryError) throw employeesQueryError;
+      
+      // 5. Delete employees for the company
+      const { error: employeesError } = await supabase
+        .from('employees')
+        .delete()
+        .eq('company_id', companyToDelete.id);
+      
+      if (employeesError) throw employeesError;
+      
+      // 6. Delete associated user accounts if needed
+      if (employeesData && employeesData.length > 0) {
+        const employeeIds = employeesData.map(emp => emp.id);
+        
+        // Delete users where id is in the list of employee IDs
+        const { error: usersError } = await supabase
+          .from('users')
+          .delete()
+          .in('id', employeeIds);
+        
+        if (usersError) throw usersError;
+      }
+      
+      // 7. Finally, delete the company itself
+      const { error: companyError } = await supabase
+        .from('companies')
+        .delete()
+        .eq('id', companyToDelete.id);
+      
+      if (companyError) throw companyError;
+      
+      // Remove from local state
+      setCompanies(companies.filter(c => c.id !== companyToDelete.id));
+      toast.success(`${companyToDelete.name} has been deleted successfully`);
+      setIsDeleteModalOpen(false);
+      setCompanyToDelete(null);
+      
+    } catch (error) {
+      console.error('Error deleting company:', error);
+      toast.error('Failed to delete company. Please try again.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -142,6 +234,15 @@ const Companies: React.FC = () => {
                     <Users size={16} className="mr-1" />
                     View Details
                   </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => handleDeleteClick(company)}
+                    className="flex items-center"
+                  >
+                    <Trash2 size={16} className="mr-1" />
+                    Delete
+                  </Button>
                 </div>
               ),
             },
@@ -152,6 +253,43 @@ const Companies: React.FC = () => {
           emptyMessage="No companies found"
         />
       </Card>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => !isDeleting && setIsDeleteModalOpen(false)}
+        title="Delete Company"
+      >
+        <div className="p-6">
+          <div className="flex items-center justify-center mb-4 text-red-500">
+            <AlertTriangle size={48} />
+          </div>
+          <h3 className="text-lg font-medium text-center mb-2">Are you sure you want to delete this company?</h3>
+          <p className="text-gray-600 text-center mb-6">
+            {companyToDelete?.name}
+          </p>
+          <p className="text-gray-600 text-center mb-6">
+            This will permanently delete the company and all associated data including employees, attendance records, and credit history. This action cannot be undone.
+          </p>
+          <div className="flex justify-end space-x-3">
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteModalOpen(false)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={confirmDelete}
+              isLoading={isDeleting}
+              loadingText="Deleting..."
+            >
+              Delete Company
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

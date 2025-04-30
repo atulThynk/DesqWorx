@@ -90,7 +90,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
-        <Route path="dashboard" element={<AdminDashboard />} />
+        <Route path="dashboard" element={<AdminCompanyEmployees />} />
         <Route path="employees" element={<AdminCompanyEmployees/>} />
         {/* <Route path="credits" element={<div>Credits Page</div>} />
         <Route path="attendance" element={<div>Attendance Page</div>} /> */}

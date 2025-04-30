@@ -32,10 +32,10 @@ const DashboardLayout: React.FC = () => {
   ];
   
   const adminLinks = [
-    { path: '/admin/dashboard', icon: <LayoutGrid size={20} />, label: 'Dashboard' },
-    { path: '/admin/employees', icon: <Users size={20} />, label: 'Employees' },
-    { path: '/admin/credits', icon: <CreditCard size={20} />, label: 'Credits' },
-    { path: '/admin/attendance', icon: <Calendar size={20} />, label: 'Attendance' },
+    // { path: '/admin/dashboard', icon: <LayoutGrid size={20} />, label: 'Dashboard' },
+    { path: '/admin/employees', icon: <Users size={20} />, label: 'Dashboard' },
+    // { path: '/admin/credits', icon: <CreditCard size={20} />, label: 'Credits' },
+    // { path: '/admin/attendance', icon: <Calendar size={20} />, label: 'Attendance' },
   ];
   
   const employeeLinks = [
